@@ -1,0 +1,314 @@
+---
+title: "apm466_ass2"
+author: "Yu Yinyin"
+date: "3/6/2021"
+output: html_document
+---
+# oil price
+```{r}
+build_stock_tree <- function(S, u, d, N) {
+  tree = matrix(0, nrow=N+1, ncol=N+1)
+
+    for (i in 1:(N+1)) {
+    for (j in 1:i) {
+      tree[i, j] = S * u^(j-1) * d^((i-1)-(j-1))
+    }  
+  }
+  return(tree)
+}
+
+stock_tree = build_stock_tree(S=1, u=1.1, d=1/1.1, N=52)
+```
+
+
+
+# case 1
+```{r}
+one_option <- function(tree, X, type) {
+  option_tree = matrix(0, nrow=nrow(tree), ncol=ncol(tree))
+  
+  if(type == 'call') {
+    option_tree[nrow(option_tree),] = pmax(tree[nrow(tree),] - X, 0)
+    }
+  else {
+    option_tree[nrow(option_tree),] = pmax(X - tree[nrow(tree),], 0)
+    }
+  
+  for (i in (nrow(tree)-1):1) {
+    for(j in 1:i) {
+      prob = (tree[i,j]-tree[i+1,j]) / (tree[i+1,j+1]-tree[i+1,j])
+      option_tree[i,j]=((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1])
+    }
+  }
+  return(option_tree)
+}
+
+oneup_tree = one_option(stock_tree, X=1, type='call')
+oneup_tree[1,1]
+```
+
+
+
+```{r}
+twoup_option <- function(underlying, tree, X) {
+  option_tree = matrix(0, nrow=nrow(tree), ncol=ncol(tree))
+  
+  option_tree[nrow(option_tree),] = pmax(underlying[nrow(underlying),] - X, 0)
+  
+  for (i in (nrow(tree)-1):1) {
+    for(j in 1:i) {
+      prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+      if((underlying[i,j]-X)<0){
+        option_tree[i,j]=((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1])
+      }
+      else{
+        option_tree[i,j]=max(underlying[i,j]-X+tree[i,j] , ((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1]))
+      }
+    }
+  }
+  return(option_tree)
+}
+
+twoup_tree = twoup_option(stock_tree, oneup_tree, X=1)
+
+
+
+
+
+
+threeup_option <- function(underlying, tree, X) {
+  option_tree = matrix(0, nrow=nrow(tree), ncol=ncol(tree))
+  
+  option_tree[nrow(option_tree),] = pmax(underlying[nrow(underlying),] - X, 0)
+  
+  for (i in (nrow(tree)-1):1) {
+    if (i==52){
+      for(j in 1:i) {
+      prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+      option_tree[i,j]=max(underlying[i,j]-X+oneup_tree[i,j] , ((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1]))
+      }
+    }
+    else{
+      for(j in 1:i) {
+      prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+      option_tree[i,j]=max(underlying[i,j]-X+tree[i,j] , ((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1]))
+      }
+    }
+  }
+  return(option_tree)
+}
+
+threeup_tree = threeup_option(stock_tree, twoup_tree, X=1)
+
+
+
+
+
+fourup_option <- function(underlying, tree, X) {
+  option_tree = matrix(0, nrow=nrow(tree), ncol=ncol(tree))
+
+  option_tree[nrow(option_tree),] = pmax(underlying[nrow(underlying),] - X, 0)
+  
+  for (i in (nrow(tree)-1):1) {
+    if (i==52){
+      for(j in 1:i) {
+      prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+      option_tree[i,j]=max(underlying[i,j]-X+oneup_tree[i,j] , ((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1]))
+      }
+    }
+    else if (i==51){
+      for(j in 1:i) {
+      prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+      option_tree[i,j]=max(underlying[i,j]-X+twoup_tree[i,j] , ((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1]))
+      }
+    }
+    else{
+      for(j in 1:i) {
+      prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+      option_tree[i,j]=max(underlying[i,j]-X+tree[i,j] , ((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1]))
+      }
+    }
+  }
+  return(option_tree)
+}
+
+
+fourup_tree = fourup_option(stock_tree, threeup_tree, X=1)
+
+#option price
+fourup_tree[1,1]
+```
+
+
+#optimal
+```{r}
+optimal_up <- function(underlying, tree, X) {
+  optimal = matrix(0, nrow=nrow(underlying)-1, ncol=ncol(underlying)-1)
+
+  for (i in (nrow(underlying)-1):1) {
+    if (i==52){
+      for(j in 1:i) {
+        prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+        if ((underlying[i,j]-X>0) & (tree[i,j]==underlying[i,j]-X+oneup_tree[i,j]) & (underlying[i,j]-X+oneup_tree[i,j]!=((1-prob)*tree[i+1,j] +prob*tree[i+1,j+1]))){
+          optimal[i,j] = 1
+        }
+      }
+    }
+    else if (i==51){
+      for(j in 1:i) {
+        prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+        if ((underlying[i,j]-X>0) & (tree[i,j]==underlying[i,j]-X+twoup_tree[i,j]) & (underlying[i,j]-X+twoup_tree[i,j]!=((1-prob)*tree[i+1,j] +prob*tree[i+1,j+1]))){
+          optimal[i,j] = 1
+        }
+      }
+    }
+    else{
+      for(j in 1:i) {
+        prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+        if ((underlying[i,j]-X>0) & (tree[i,j]==underlying[i,j]-X+threeup_tree[i,j]) & (underlying[i,j]-X+threeup_tree[i,j]!=((1-prob)*tree[i+1,j] +prob*tree[i+1,j+1]))){
+          optimal[i,j] = 1
+        }
+      }
+    }
+  }
+  return(optimal)
+}
+optimal4up = optimal_up(stock_tree,fourup_tree, X=1)
+#rowMeans(optimal4up)
+```
+
+
+
+
+# case 2
+```{r}
+
+onedown_tree = one_option(stock_tree, X=1, type='put')
+
+```
+
+
+
+```{r}
+twodown_option <- function(underlying, tree, X) {
+  option_tree = matrix(0, nrow=nrow(tree), ncol=ncol(tree))
+  
+  option_tree[nrow(option_tree),] = pmax(X-underlying[nrow(underlying),], 0)
+  
+  for (i in (nrow(tree)-1):1) {
+    for(j in 1:i) {
+      prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+      if((X-underlying[i,j])<0){
+        option_tree[i,j]=((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1])
+      }
+      else{
+        option_tree[i,j]=max(X-underlying[i,j]+tree[i,j] , ((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1]))
+      }
+    }
+  }
+  return(option_tree)
+}
+
+twodown_tree = twodown_option(stock_tree, onedown_tree, X=1)
+twodown_tree[1,1]
+
+
+threedown_option <- function(underlying, tree, X) {
+  option_tree = matrix(0, nrow=nrow(tree), ncol=ncol(tree))
+  
+  option_tree[nrow(option_tree),] = pmax(X-underlying[nrow(underlying),], 0)
+  
+  for (i in (nrow(tree)-1):1) {
+    if (i==52){
+      for(j in 1:i) {
+      prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+      option_tree[i,j]=max(X-underlying[i,j]+onedown_tree[i,j] , ((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1]))
+      }
+    }
+    else{
+      for(j in 1:i) {
+      prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+      option_tree[i,j]=max(X-underlying[i,j]+tree[i,j] , ((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1]))
+      }
+    }
+  }
+  return(option_tree)
+}
+
+threedown_tree = threedown_option(stock_tree, twodown_tree, X=1)
+threedown_tree[1,1]
+
+
+fourup_option <- function(underlying, tree, X) {
+  option_tree = matrix(0, nrow=nrow(tree), ncol=ncol(tree))
+
+  option_tree[nrow(option_tree),] = pmax(X-underlying[nrow(underlying),], 0)
+  
+  for (i in (nrow(tree)-1):1) {
+    if (i==52){
+      for(j in 1:i) {
+      prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+      option_tree[i,j]=max(X-underlying[i,j]+onedown_tree[i,j] , ((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1]))
+      }
+    }
+    else if (i==51){
+      for(j in 1:i) {
+      prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+      option_tree[i,j]=max(X-underlying[i,j]+twodown_tree[i,j] , ((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1]))
+      }
+    }
+    else{
+      for(j in 1:i) {
+      prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+      option_tree[i,j]=max(X-underlying[i,j]+tree[i,j] , ((1-prob)*option_tree[i+1,j] + prob*option_tree[i+1,j+1]))
+      }
+    }
+  }
+  return(option_tree)
+}
+
+fourdown_tree = fourup_option(stock_tree, threedown_tree, X=1)
+
+#option price
+fourdown_tree[1,1] 
+
+```
+
+
+
+```{r}
+optimal_down <- function(underlying, tree, X) {
+  optimal = matrix(0, nrow=nrow(underlying)-1, ncol=ncol(underlying)-1)
+
+  for (i in (nrow(underlying)-1):1) {
+    if (i==52){
+      for(j in 1:i) {
+        prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+        if ((X-underlying[i,j]>0) & (tree[i,j]==X-underlying[i,j]+onedown_tree[i,j]) & (X-underlying[i,j]+onedown_tree[i,j]!=((1-prob)*tree[i+1,j] +prob*tree[i+1,j+1]))){
+          optimal[i,j] = 1
+        }
+      }
+    }
+    else if (i==51){
+      for(j in 1:i) {
+        prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+        if ((X-underlying[i,j]>0) & (tree[i,j]==X-underlying[i,j]+twodown_tree[i,j]) & (X-underlying[i,j]+twoup_tree[i,j]!=((1-prob)*tree[i+1,j] +prob*tree[i+1,j+1]))){
+          optimal[i,j] = 1
+        }
+      }
+    }
+    else{
+      for(j in 1:i) {
+        prob = (underlying[i,j]-underlying[i+1,j]) / (underlying[i+1,j+1]-underlying[i+1,j])
+        if ((X-underlying[i,j]>0) & (tree[i,j]==X-underlying[i,j]+threedown_tree[i,j]) & (X-underlying[i,j]+threedown_tree[i,j]!=((1-prob)*tree[i+1,j] +prob*tree[i+1,j+1]))){
+          optimal[i,j] = 1
+        }
+      }
+    }
+  }
+  return(optimal)
+}
+optimal4down = optimal_down(stock_tree,fourdown_tree, X=1)
+
+```
+
